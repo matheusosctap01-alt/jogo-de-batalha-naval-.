@@ -1,0 +1,154 @@
+# jogo-de-bata/* batalha_naval_areas.c
+   Implementação simplificada de um tabuleiro de Batalha Naval com habilidades de área:
+   - cone (direcional)
+   - cross (cruz / plus)
+   - octaedro (diamante por distância Manhattan)
+   Tabuleiro default: 10x10
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define BOARD_SIZE 10
+
+/* Representação:
+   '.' -> água (não atingida)
+   'S' -> navio (intacto)
+   'X' -> célula atingida (acerto)
+   '*' -> célula atingida por habilidade (marca visual)
+*/
+
+typedef enum { NORTH=0, SOUTH=1, EAST=2, WEST=3 } Direction;
+
+void init_board(char board[BOARD_SIZE][BOARD_SIZE]) {
+    for (int r = 0; r < BOARD_SIZE; ++r)
+        for (int c = 0; c < BOARD_SIZE; ++c)
+            board[r][c] = '.';
+}
+
+void print_board(char board[BOARD_SIZE][BOARD_SIZE]) {
+    printf("   ");
+    for (int c = 0; c < BOARD_SIZE; ++c) printf("%2d", c);
+    printf("\n");
+    for (int r = 0; r < BOARD_SIZE; ++r) {
+        printf("%2d ", r);
+        for (int c = 0; c < BOARD_SIZE; ++c) {
+            printf(" %c", board[r][c]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+/* Utility: marca a célula (se navio -> X, se água -> '*') */
+void mark_cell(char board[BOARD_SIZE][BOARD_SIZE], int r, int c) {
+    if (r < 0 || r >= BOARD_SIZE || c < 0 || c >= BOARD_SIZE) return;
+    if (board[r][c] == 'S') board[r][c] = 'X';
+    else if (board[r][c] == '.' ) board[r][c] = '*';
+    /* se já marcado 'X' ou '*' -> deixa como está */
+}
+
+/* Coloca um navio horizontal ou vertical (simples helper) */
+int place_ship(char board[BOARD_SIZE][BOARD_SIZE], int r, int c, int length, int horizontal) {
+    if (horizontal) {
+        if (c + length - 1 >= BOARD_SIZE) return 0;
+        for (int i = 0; i < length; ++i) board[r][c+i] = 'S';
+    } else {
+        if (r + length - 1 >= BOARD_SIZE) return 0;
+        for (int i = 0; i < length; ++i) board[r+i][c] = 'S';
+    }
+    return 1;
+}
+
+/* Habilidade: Cone
+   origin (r,c), direction, range (>=1)
+   para cada step s = 1..range, afeta a linha/coluna a distância s, e largura = (s-1) em cada lado
+   Exemplo: para NORTH, atinge row = r - s, columns c - (s-1) .. c + (s-1)
+*/
+void ability_cone(char board[BOARD_SIZE][BOARD_SIZE], int r0, int c0, Direction dir, int range) {
+    for (int s = 1; s <= range; ++s) {
+        int row = r0, col = c0;
+        switch (dir) {
+            case NORTH: row = r0 - s;      break;
+            case SOUTH: row = r0 + s;      break;
+            case EAST:  col = c0 + s;      break;
+            case WEST:  col = c0 - s;      break;
+        }
+        if (dir == NORTH || dir == SOUTH) {
+            int half_width = s - 1;
+            for (int dc = -half_width; dc <= half_width; ++dc) {
+                int cc = c0 + dc;
+                mark_cell(board, row, cc);
+            }
+        } else { /* EAST or WEST */
+            int half_width = s - 1;
+            for (int dr = -half_width; dr <= half_width; ++dr) {
+                int rr = r0 + dr;
+                mark_cell(board, rr, col);
+            }
+        }
+    }
+}
+
+/* Habilidade: Cross (cruz / 'plus')
+   origin (r,c), radius r
+   atinge a linha r, coluna c com extensão radius em cada direção
+*/
+void ability_cross(char board[BOARD_SIZE][BOARD_SIZE], int r0, int c0, int radius) {
+    mark_cell(board, r0, c0); // centro
+    for (int d = 1; d <= radius; ++d) {
+        mark_cell(board, r0 + d, c0);
+        mark_cell(board, r0 - d, c0);
+        mark_cell(board, r0, c0 + d);
+        mark_cell(board, r0, c0 - d);
+    }
+}
+
+/* Habilidade: Octaedro (interpreto como "diamante" / Manhattan distance)
+   origin (r,c), radius
+   atinge todas as células com |dr| + |dc| <= radius
+*/
+void ability_octahedron(char board[BOARD_SIZE][BOARD_SIZE], int r0, int c0, int radius) {
+    for (int dr = -radius; dr <= radius; ++dr) {
+        for (int dc = -radius; dc <= radius; ++dc) {
+            if (abs(dr) + abs(dc) <= radius) {
+                mark_cell(board, r0 + dr, c0 + dc);
+            }
+        }
+    }
+}
+
+/* Função de exemplo que aplica várias habilidades para demonstrar */
+void demo_scenario() {
+    char board[BOARD_SIZE][BOARD_SIZE];
+    init_board(board);
+
+    /* Colocar alguns navios exemplo */
+    place_ship(board, 2, 2, 4, 1); /* horizontal 4 (linha 2, col 2..5) */
+    place_ship(board, 5, 6, 3, 0); /* vertical   3 (linhas 5..7, col 6) */
+    place_ship(board, 8, 1, 2, 1); /* horizontal 2 */
+
+    printf("Tabuleiro inicial (S = navio):\n");
+    print_board(board);
+
+    printf("Aplicando habilidade CONE (origem 7,5 direção N range 3)...\n");
+    ability_cone(board, 7, 5, NORTH, 3);
+    print_board(board);
+
+    printf("Aplicando habilidade CRUZ (origem 2,3 radius 2)...\n");
+    ability_cross(board, 2, 3, 2);
+    print_board(board);
+
+    printf("Aplicando habilidade OCTAEDRO/DIAMANTE (origem 5,6 radius 2)...\n");
+    ability_octahedron(board, 5, 6, 2);
+    print_board(board);
+
+    printf("Legenda: S = navio intacto, X = navio atingido, * = água atingida\n");
+}
+
+int main(void) {
+    demo_scenario();
+    return 0;
+}
+lha-naval-.
